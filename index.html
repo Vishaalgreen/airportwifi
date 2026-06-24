@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Enterprise FleetOps Nexus | Progressive DLF Drill-Down</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --bg-main: #05070a;
+            --surface-panel: #0a0d14;
+            --border-glow: #1e293b;
+            --text-primary: #d1d5db;
+            --text-muted: #64748b;
+            --status-critical: #ef4444;
+            --status-warning: #f59e0b;
+            --status-success: #10b981;
+            --status-info: #3b82f6;
+        }
+
+        body { background: var(--bg-main); color: var(--text-primary); font-family: 'Segoe UI', monospace; margin: 0; overflow: hidden; }
+        .container { display: grid; grid-template-columns: 380px 1fr; height: 100vh; }
+        
+        /* Left Transcript Queue */
+        .sidebar { background: var(--surface-panel); border-right: 1px solid var(--border-glow); padding: 20px; z-index: 10; display: flex; flex-direction: column; }
+        .log-entry { font-size: 11px; margin-bottom: 8px; font-family: 'Courier New', monospace; border-left: 2px solid var(--border-glow); padding-left: 10px; animation: fadeIn 0.3s ease; }
+        .log-bot { color: var(--status-info); border-color: var(--status-info); }
+        .log-critical { color: var(--status-critical); border-color: var(--status-critical); font-weight: bold; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+
+        .main { position: relative; display: flex; flex-direction: column; }
+        #map { flex-grow: 1; background: #0b0e14; }
+
+        /* HUD Headers */
+        .hud-top { position: absolute; top: 20px; left: 20px; right: 20px; z-index: 1000; display: flex; justify-content: space-between; pointer-events: none; }
+        .card { background: rgba(10, 13, 20, 0.95); border: 1px solid #334155; border-radius: 8px; padding: 15px; backdrop-filter: blur(10px); pointer-events: auto; min-width: 320px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        
+        /* Action Dispatch Card */
+        .dispatch-inner-card { display: none; margin-top: 12px; padding: 12px; background: #111827; border: 1px solid #374151; border-radius: 6px; border-left: 3px solid var(--status-critical); }
+        .action-btn { width: 100%; margin-top: 10px; background: #2563eb; color: white; border: none; padding: 8px; font-weight: bold; border-radius: 4px; cursor: pointer; font-size: 11px; }
+        .action-btn:hover { background: #1d4ed8; }
+
+        .status-badge { padding: 6px 14px; font-weight: bold; border-radius: 4px; font-size: 11px; letter-spacing: 1px; border: 1px solid #334155; align-self: flex-start; }
+        .status-standby { color: var(--text-muted); background: #1e293b; }
+        .status-alert { color: var(--status-critical); border-color: var(--status-critical); background: rgba(239, 68, 68, 0.1); box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); }
+        .status-active { color: var(--status-warning); border-color: var(--status-warning); background: rgba(245, 158, 11, 0.1); box-shadow: 0 0 20px rgba(245, 158, 11, 0.2); }
+
+        .legend { position: absolute; bottom: 20px; left: 20px; font-size: 10px; color: #94a3b8; background: rgba(10,13,20,0.95); padding: 12px 20px; border-radius: 8px; z-index: 1000; border: 1px solid #1e293b; pointer-events: none; }
+        .key-hint { color: var(--status-info); font-weight: bold; margin-right: 15px; border: 1px solid #3b82f633; padding: 2px 6px; border-radius: 3px; }
+        
+        /* Pulse Animation Overlay for Leaflet */
+        .custom-pulse-icon { background: var(--status-critical); border-radius: 50%; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); animation: pulse 1.4s infinite; }
+        @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h3 style="font-size: 10px; color: #64748b; letter-spacing: 2px; margin-bottom: 20px;">FLEETOPS SIGNAL LOGS</h3>
+        <div id="logs" style="overflow-y: auto; flex-grow: 1;">
+            <div class="log-entry" style="color: #475569;">// Awaiting Geolocation Drill-Down Init...</div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="hud-top">
+            <div class="card">
+                <div style="font-size: 9px; color: #64748b; margin-bottom: 5px; text-transform: uppercase;">Tactical Target Node</div>
+                <div id="circuit-title" style="color: #fff; font-weight: bold; font-size: 15px;">Continental US Airspace</div>
+                <div id="circuit-meta" style="font-size: 11px; color: var(--status-info); margin-top: 5px;">Scanning regional exception boundaries...</div>
+                
+                <div id="dispatch-block" class="dispatch-inner-card">
+                    <div style="font-size:11px; font-weight:bold; color:white;">⚠️ Device Delivery Pending</div>
+                    <div style="font-size:10px; color:var(--text-secondary); margin-top:3px;">Asset: Low-Bandwidth iPad / Aviobook Combo</div>
+                    <div style="font-size:10px; color:var(--status-critical); margin-top:2px;">Flight Target: AA-402 (Pushback in 9m)</div>
+                    <button class="action-btn" onclick="triggerCourier()">⚡ Dispatch Runner to Gate C18</button>
+                </div>
+            </div>
+            <div id="status-pill" class="status-badge status-standby">NAS_IDLE</div>
+        </div>
+
+        <div id="map"></div>
+
+        <div class="legend">
+            <span class="key-hint">V</span> 1. VIEW USA & ZOOM DALLAS &nbsp;&nbsp;
+            <span class="key-hint">A</span> 2. ISOLATE DLF AIRPORT &nbsp;&nbsp;
+            <span class="key-hint">S</span> 3. LOCATE TERMINAL & GATES &nbsp;&nbsp;
+            <span class="key-hint">R</span> RESET
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // Initialize view to wide US perspective
+    const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([38.5, -96.5], 4);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
+    const logs = document.getElementById('logs');
+    let dynamicLayers = [];
+    let currentStage = 0;
+
+    // Progressive Drill-down Coordinate Anchors
+    const dallasRegionCoords = [32.7767, -96.7970];
+    const dlfAirportCoords = [32.8998, -97.0403];
+    
+    // Exact structural coordinates for real context-based layout
+    const gateC18Coords = [32.8945, -97.0345];
+    const gateC14Coords = [32.8960, -97.0355];
+    const gateC10Coords = [32.8975, -97.0365];
+
+    function addLog(msg, type) {
+        const div = document.createElement('div');
+        div.className = `log-entry ${type === 'bot' ? 'log-bot' : type === 'critical' ? 'log-critical' : ''}`;
+        div.innerText = `> ${msg}`;
+        logs.prepend(div);
+    }
+
+    function clearLayers() {
+        dynamicLayers.forEach(layer => map.removeLayer(layer));
+        dynamicLayers = [];
+    }
+
+    // Set initial alert flag on US map directly over Texas region
+    const initialAlertMarker = L.divIcon({ className: 'custom-pulse-icon', iconSize: [14, 14] });
+    const usFlag = L.marker([32.7767, -96.7970], { icon: initialAlertMarker }).addTo(map)
+        .bindTooltip("<b>🚨 ALERT DETECTED</b><br>Texas Regional Corridor Exception", { permanent: true, direction: 'top', className: 'status-badge status-alert' });
+    dynamicLayers.push(usFlag);
+
+    window.addEventListener('keydown', (e) => {
+        const key = e.key.toLowerCase();
+
+        // STAGE 1: Zoom to Dallas Metro Region
+        if (key === 'v' && currentStage === 0) {
+            clearLayers();
+            currentStage = 1;
+            addLog("ISOLATING CONTINENTAL EXCEPTION PIPELINE...", false);
+            map.flyTo(dallasRegionCoords, 10, { duration: 2.2, easeLinearity: 0.25 });
+
+            setTimeout(() => {
+                const regionalMarker = L.marker(dallasRegionCoords, { icon: initialAlertMarker }).addTo(map)
+                    .bindTooltip("<b>⚠️ EXCLAMATION FOUND</b><br>Dallas Metro Complex Zone", { permanent: true, direction: 'top' });
+                dynamicLayers.push(regionalMarker);
+
+                document.getElementById('circuit-title').innerText = "Dallas Metroplex Space";
+                document.getElementById('circuit-meta').innerText = "Area Code: DAL-REGIONAL | Monitoring Nodes";
+                document.getElementById('status-pill').innerText = "METRO_ISOLATED";
+                document.getElementById('status-pill').className = "status-badge status-alert";
+                addLog("BOT: Found active anomaly inside Dallas Airspace. Proceeding to target airport cluster.", 'bot');
+            }, 2200);
+        }
+
+        // STAGE 2: Zoom closer to precise DLF Airport Hub Terminal Complex
+        if (key === 'a' && currentStage === 1) {
+            clearLayers();
+            currentStage = 2;
+            addLog("INTERPOLATING RADIAL COORDINATES TO AIRPORT INFRASTRUCTURE...", false);
+            map.flyTo(dlfAirportCoords, 14, { duration: 2.0 });
+
+            setTimeout(() => {
+                // High-fidelity structural blueprint representing Terminal C area contextually
+                const terminalCPolygon = L.polygon([
+                    [32.8990, -97.0375],
+                    [32.8930, -97.0335],
+                    [32.8925, -97.0345],
+                    [32.8985, -97.0385]
+                ], {
+                    color: 'var(--status-critical)',
+                    fillColor: 'rgba(239, 68, 68, 0.15)',
+                    fillOpacity: 0.5,
+                    weight: 2
+                }).addTo(map);
+                dynamicLayers.push(terminalCPolygon);
+
+                const airportMarker = L.marker(dlfAirportCoords, { icon: initialAlertMarker }).addTo(map)
+                    .bindTooltip("<b>❗ DLF HUB EXCEPTION</b><br>Terminal C Incomplete Handover Cluster", { permanent: true, direction: 'top' });
+                dynamicLayers.push(airportMarker);
+
+                document.getElementById('circuit-title').innerText = "Dallas-Love Field (DLF)";
+                document.getElementById('circuit-meta').innerText = "Facility Class: Core Hub | Terminal C Active Fault Sector";
+                addLog("BOT: Structural match identified: DLF Airport Hub. Isolation verified at Terminal C.", 'bot');
+            }, 2000);
+        }
+
+        // STAGE 3: Final step down into Terminal C Gates view with Action Item Card
+        if (key === 's' && currentStage === 2) {
+            clearLayers();
+            currentStage = 3;
+            addLog("RESOLVING CONCOURSE ARRAY: LOADING GATE BLUEPRINT...", false);
+            map.flyTo(gateC18Coords, 17, { duration: 1.8 });
+
+            setTimeout(() => {
+                // Safe operational gates dropped precisely on top of geographic tile layers
+                const markerC10 = L.circleMarker(gateC10Coords, { color: 'var(--text-muted)', radius: 8, fillOpacity: 0.9 }).addTo(map).bindTooltip("Gate C10", { permanent: true, direction: 'left' });
+                const markerC14 = L.circleMarker(gateC14Coords, { color: 'var(--text-muted)', radius: 8, fillOpacity: 0.9 }).addTo(map).bindTooltip("Gate C14", { permanent: true, direction: 'left' });
+                dynamicLayers.push(markerC10, markerC14);
+
+                // Main operational anchor point for the warning (Gate C18)
+                const gateAlertMarker = L.marker(gateC18Coords, { icon: initialAlertMarker }).addTo(map)
+                    .bindTooltip("<b>🚨 ACTION REQUIRED</b><br>Gate C18 Aviobook Sync Missing", { permanent: true, direction: 'right' });
+                dynamicLayers.push(gateAlertMarker);
+
+                document.getElementById('circuit-title').innerText = "DLF Concourse C — Gate C18";
+                document.getElementById('circuit-meta').innerText = "Hardware Stack: Low-Bandwidth iPad Array Profile";
+                document.getElementById('status-pill').innerText = "ACTION_REQUIRED";
+                
+                // Expose operational action item panel cleanly
+                document.getElementById('dispatch-block').style.display = "block";
+                addLog("CRITICAL: Captain reporting flight device missing. Dispatch option enabled.", 'critical');
+            }, 1800);
+        }
+
+        if (key === 'r') { location.reload(); }
+    });
+
+    // Handle runner assignment trigger
+    window.triggerCourier = function() {
+        addLog("RUNNER ALLOCATED. TARMAC TRANSIT INITIATED.", false);
+        document.getElementById('status-pill').innerText = "RUNNER_EN_ROUTE";
+        document.getElementById('status-pill').className = "status-badge status-active";
+        
+        document.getElementById('dispatch-block').innerHTML = `
+            <div style="font-size:11px; font-weight:bold; color:var(--status-warning);">⏳ Handover Deployment Active</div>
+            <div style="font-size:10px; color:var(--text-secondary); margin-top:4px;">Courier asset signature confirmed on ground. Navigating past airfield checkpoints.</div>
+        `;
+        addLog("BOT: Handover status tracked live. Sync handshake incoming.", "bot");
+    }
+</script>
+</body>
+</html>
