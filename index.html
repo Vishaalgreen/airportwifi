@@ -91,22 +91,23 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // Initialize view to wide US perspective
     const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([38.5, -96.5], 4);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+    
+    // Free Esri Canvas Dark Tiles (No API Key Required)
+    L.tileLayer('https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 16,
+        maxNativeZoom: 16
+    }).addTo(map);
 
     const logs = document.getElementById('logs');
     let dynamicLayers = [];
     let currentStage = 0;
 
-    // Progressive Drill-down Coordinate Anchors
     const dallasRegionCoords = [32.7767, -96.7970];
-    const dlfAirportCoords = [32.8998, -97.0403];
-    
-    // Exact structural coordinates for real context-based layout
-    const gateC18Coords = [32.8945, -97.0345];
-    const gateC14Coords = [32.8960, -97.0355];
-    const gateC10Coords = [32.8975, -97.0365];
+    const dlfAirportCoords = [32.8481, -96.8512];
+    const gateC18Coords = [32.8475, -96.8505];
+    const gateC14Coords = [32.8485, -96.8515];
+    const gateC10Coords = [32.8495, -96.8525];
 
     function addLog(msg, type) {
         const div = document.createElement('div');
@@ -120,7 +121,6 @@
         dynamicLayers = [];
     }
 
-    // Set initial alert flag on US map directly over Texas region
     const initialAlertMarker = L.divIcon({ className: 'custom-pulse-icon', iconSize: [14, 14] });
     const usFlag = L.marker([32.7767, -96.7970], { icon: initialAlertMarker }).addTo(map)
         .bindTooltip("<b>🚨 ALERT DETECTED</b><br>Texas Regional Corridor Exception", { permanent: true, direction: 'top', className: 'status-badge status-alert' });
@@ -129,7 +129,6 @@
     window.addEventListener('keydown', (e) => {
         const key = e.key.toLowerCase();
 
-        // STAGE 1: Zoom to Dallas Metro Region
         if (key === 'v' && currentStage === 0) {
             clearLayers();
             currentStage = 1;
@@ -149,7 +148,6 @@
             }, 2200);
         }
 
-        // STAGE 2: Zoom closer to precise DLF Airport Hub Terminal Complex
         if (key === 'a' && currentStage === 1) {
             clearLayers();
             currentStage = 2;
@@ -157,12 +155,11 @@
             map.flyTo(dlfAirportCoords, 14, { duration: 2.0 });
 
             setTimeout(() => {
-                // High-fidelity structural blueprint representing Terminal C area contextually
                 const terminalCPolygon = L.polygon([
-                    [32.8990, -97.0375],
-                    [32.8930, -97.0335],
-                    [32.8925, -97.0345],
-                    [32.8985, -97.0385]
+                    [32.8490, -96.8530],
+                    [32.8465, -96.8490],
+                    [32.8460, -96.8500],
+                    [32.8485, -96.8540]
                 ], {
                     color: 'var(--status-critical)',
                     fillColor: 'rgba(239, 68, 68, 0.15)',
@@ -181,20 +178,17 @@
             }, 2000);
         }
 
-        // STAGE 3: Final step down into Terminal C Gates view with Action Item Card
         if (key === 's' && currentStage === 2) {
             clearLayers();
             currentStage = 3;
             addLog("RESOLVING CONCOURSE ARRAY: LOADING GATE BLUEPRINT...", false);
-            map.flyTo(gateC18Coords, 17, { duration: 1.8 });
+            map.flyTo(gateC18Coords, 16, { duration: 1.8 });
 
             setTimeout(() => {
-                // Safe operational gates dropped precisely on top of geographic tile layers
                 const markerC10 = L.circleMarker(gateC10Coords, { color: 'var(--text-muted)', radius: 8, fillOpacity: 0.9 }).addTo(map).bindTooltip("Gate C10", { permanent: true, direction: 'left' });
                 const markerC14 = L.circleMarker(gateC14Coords, { color: 'var(--text-muted)', radius: 8, fillOpacity: 0.9 }).addTo(map).bindTooltip("Gate C14", { permanent: true, direction: 'left' });
                 dynamicLayers.push(markerC10, markerC14);
 
-                // Main operational anchor point for the warning (Gate C18)
                 const gateAlertMarker = L.marker(gateC18Coords, { icon: initialAlertMarker }).addTo(map)
                     .bindTooltip("<b>🚨 ACTION REQUIRED</b><br>Gate C18 Aviobook Sync Missing", { permanent: true, direction: 'right' });
                 dynamicLayers.push(gateAlertMarker);
@@ -203,7 +197,6 @@
                 document.getElementById('circuit-meta').innerText = "Hardware Stack: Low-Bandwidth iPad Array Profile";
                 document.getElementById('status-pill').innerText = "ACTION_REQUIRED";
                 
-                // Expose operational action item panel cleanly
                 document.getElementById('dispatch-block').style.display = "block";
                 addLog("CRITICAL: Captain reporting flight device missing. Dispatch option enabled.", 'critical');
             }, 1800);
@@ -212,7 +205,6 @@
         if (key === 'r') { location.reload(); }
     });
 
-    // Handle runner assignment trigger
     window.triggerCourier = function() {
         addLog("RUNNER ALLOCATED. TARMAC TRANSIT INITIATED.", false);
         document.getElementById('status-pill').innerText = "RUNNER_EN_ROUTE";
